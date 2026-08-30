@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Seeded Random Art — diverse geometry</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; }
+  .controls { display: flex; gap: .5rem; flex-wrap: wrap; align-items: end; }
+  label { display: flex; flex-direction: column; font-size: .85rem; }
+  input { padding: .4rem; }
+  button { padding: .5rem .9rem; cursor: pointer; }
+  #status { margin: .5rem 0; color: #555; }
+  #art { border: 1px solid #ccc; max-width: 100%; margin-top: 1rem; }
+</style>
+</head>
+<body>
+  <h1>Make your own random picture (seeded)</h1>
+  <p>Same seed + size = same image. Now with more geometric variety.</p>
+
+  <div class="controls">
+    <label>Seed (any text)
+      <input id="seed" type="text" value="hello" />
+    </label>
+    <label>Width (X, px)
+      <input id="width" type="number" value="800" min="1" max="4096" />
+    </label>
+    <label>Height (Y, px)
+      <input id="height" type="number" value="600" min="1" max="4096" />
+    </label>
+    <button id="paint">Paint</button>
+    <button id="random">Random seed</button>
+    <button id="save">Save image</button>
+    <button id="stop">Stop</button>
+  </div>
+
+  <div id="status">Idle.</div>
+  <img id="art" alt="Generated art will appear here" />
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let controller = null;
+
+  async function paint() {
+    const seed = $('seed').value;
+    const width = parseInt($('width').value);
+    const height = parseInt($('height').value);
+
+    if (controller) controller.abort();
+    controller = new AbortController();
+
+    $('status').textContent = 'Rendering…';
+    const t0 = performance.now();
+
+    try {
+      const res = await fetch('/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seed, width, height }),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error('Render failed');
+      const cacheSrc = res.headers.get('X-Cache');
+      const blob = await res.blob();
+      $('art').src = URL.createObjectURL(blob);
+      const ms = (performance.now() - t0).toFixed(0);
+      $('status').textContent = `Done in ${ms} ms (cache: ${cacheSrc}).`;
+    } catch (err) {
+      if (err.name === 'AbortError') $('status').textContent = 'Stopped.';
+      else $('status').textContent = 'Error: ' + err.message;
+    }
+  }
+
+  $('paint').onclick = paint;
+  $('random').onclick = () => {
+    $('seed').value = Math.random().toString(36).slice(2, 10);
+    paint();
+  };
+  $('save').onclick = () => {
+    if (!$('art').src) return;
+    const a = document.createElement('a');
+    a.href = $('art').src;
+    a.download = `art-${$('seed').value}.png`;
+    a.click();
+  };
+  $('stop').onclick = () => { if (controller) controller.abort(); };
+</script>
+</body>
+</html>

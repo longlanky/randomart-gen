@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Seeded Random Art — diverse geometry</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #1a1d27;
+    --panel-2: #222633;
+    --border: #2c3142;
+    --text: #e6e9f0;
+    --muted: #9aa3b2;
+    --accent: #6c8cff;
+    --accent-hover: #5a7bff;
+    --radius: 12px;
+    --shadow: 0 10px 30px rgba(0,0,0,.45);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(1200px 600px at 20% -10%, #1b2030 0%, transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, #20182b 0%, transparent 55%),
+      var(--bg);
+    display: flex;
+    justify-content: center;
+    padding: 3rem 1.25rem;
+  }
+
+  .wrap { width: 100%; max-width: 980px; }
+
+  header { margin-bottom: 1.75rem; }
+
+  h1 {
+    margin: 0 0 .4rem;
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    font-weight: 800;
+    letter-spacing: -.02em;
+    background: linear-gradient(90deg, #c8d4ff, #9c7bff 60%, #ff9ecf);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .subtitle { margin: 0; color: var(--muted); font-size: .98rem; }
+
+  /* Control panel */
+  .panel {
+    background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.25rem 1.25rem 1.4rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .fields {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: .9rem;
+    margin-bottom: 1.1rem;
+  }
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+    font-size: .78rem;
+    font-weight: 600;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  input {
+    padding: .65rem .75rem;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: #11141d;
+    color: var(--text);
+    font-size: .95rem;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(108,140,255,.25);
+  }
+
+  .actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+
+  button {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: #20242f;
+    color: var(--text);
+    padding: .6rem 1.05rem;
+    border-radius: 9px;
+    font-size: .92rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, transform .05s;
+  }
+  button:hover { background: #2a2f3d; }
+  button:active { transform: translateY(1px); }
+
+  button.primary {
+    background: linear-gradient(180deg, var(--accent), var(--accent-hover));
+    border-color: transparent;
+    color: #fff;
+    box-shadow: 0 6px 18px rgba(108,140,255,.35);
+  }
+  button.primary:hover { filter: brightness(1.07); }
+
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* Status */
+  .status {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+    margin: .25rem 2px 0;
+    color: var(--muted);
+    font-size: .88rem;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--muted);
+  }
+  .status.busy .dot { background: var(--accent); animation: pulse 1s infinite; }
+  .status.done  .dot { background: #4ade80; }
+  .status.error .dot { background: #f87171; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* Art stage */
+  .stage {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background:
+      repeating-conic-gradient(#15171f 0% 25%, #181b24 0% 50%) 50% / 28px 28px;
+    box-shadow: var(--shadow);
+    min-height: 320px;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+  }
+  .stage img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    border-radius: calc(var(--radius) - 2px);
+  }
+  .placeholder {
+    color: var(--muted);
+    font-size: .95rem;
+    text-align: center;
+    padding: 2rem;
+  }
+
+  .spinner {
+    position: absolute;
+    inset: 0;
+    display: none;
+    place-items: center;
+    background: rgba(15,17,23,.55);
+    backdrop-filter: blur(2px);
+  }
+  .stage.loading .spinner { display: grid; }
+  .spinner i {
+    width: 40px; height: 40px;
+    border: 3px solid rgba(255,255,255,.2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 620px) {
+    .fields { grid-template-columns: 1fr 1fr; }
+    .fields label:first-child { grid-column: 1 / -1; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Random Art</h1>
+      <p class="subtitle">Same seed = same image, even with different resolutions.</p>
+    </header>
+
+    <section class="panel">
+      <div class="fields">
+        <label>Seed (any text)
+          <input id="seed" type="text" value="hello" />
+        </label>
+        <label>Width (X, px)
+          <input id="width" type="number" value="800" min="1" max="4096" />
+        </label>
+        <label>Height (Y, px)
+          <input id="height" type="number" value="600" min="1" max="4096" />
+        </label>
+      </div>
+      <div class="actions">
+        <button id="paint" class="primary">Paint</button>
+        <button id="random">Random seed</button>
+        <button id="save">Save image</button>
+        <button id="stop">Stop</button>
+      </div>
+      <div id="status" class="status"><span class="dot"></span><span id="statusText">Idle.</span></div>
+    </section>
+
+    <div id="stage" class="stage">
+      <div id="placeholder" class="placeholder">Generated art will appear here</div>
+      <img id="art" alt="Generated art" style="display:none" />
+      <div class="spinner"><i></i></div>
+    </div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let controller = null;
+
+  function setStatus(text, state) {
+    $('statusText').textContent = text;
+    $('status').className = 'status' + (state ? ' ' + state : '');
+  }
+
+  async function paint() {
+    const seed = $('seed').value;
+    const width = parseInt($('width').value);
+    const height = parseInt($('height').value);
+
+    if (controller) controller.abort();
+    controller = new AbortController();
+
+    $('stage').classList.add('loading');
+    setStatus('Rendering…', 'busy');
+    const t0 = performance.now();
+
+    try {
+      const res = await fetch('/render', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seed, width, height }),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error('Render failed');
+      const cacheSrc = res.headers.get('X-Cache');
+      const blob = await res.blob();
+
+      $('placeholder').style.display = 'none';
+      $('art').style.display = 'block';
+      $('art').src = URL.createObjectURL(blob);
+
+      const ms = (performance.now() - t0).toFixed(0);
+      setStatus(`Done in ${ms} ms (cache: ${cacheSrc}).`, 'done');
+    } catch (err) {
+      if (err.name === 'AbortError') setStatus('Stopped.', null);
+      else setStatus('Error: ' + err.message, 'error');
+    } finally {
+      $('stage').classList.remove('loading');
+    }
+  }
+
+  $('paint').onclick = paint;
+  $('random').onclick = () => {
+    $('seed').value = Math.random().toString(36).slice(2, 10);
+    paint();
+  };
+  $('save').onclick = () => {
+    if (!$('art').src) return;
+    const a = document.createElement('a');
+    a.href = $('art').src;
+    a.download = `art-${$('seed').value}.png`;
+    a.click();
+  };
+  $('stop').onclick = () => { if (controller) controller.abort(); };
+</script>
+</body>
+</html>
