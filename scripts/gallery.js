@@ -1,5 +1,5 @@
-// Fixed-seed contact sheet: each card shows a large square plus three fitted
-// exports of the same plan. Usage: npm run gallery -- /path/to/gallery.png
+// Fixed seeds: widescreen, square, ultrawide, and portrait adaptive layouts.
+// Usage: npm run gallery -- /path/to/gallery.png
 import { writeFile } from 'node:fs/promises';
 import { createCanvas, GlobalFonts } from '@napi-rs/canvas';
 import { createArtwork } from '../lib/artwork.js';
@@ -12,8 +12,8 @@ if (!output) {
   process.exit(1);
 }
 
-const seeds = ['gallery-1', 'gallery-2', 'gallery-10', 'gallery-3', 'gallery-6', 'gallery-15', 'gallery-0', 'gallery-11', 'gallery-20'];
-const canvas = createCanvas(960, 1320);
+const seeds = ['review-8', 'review-29', 'review-3', 'review-6', 'review-7', 'review-19', 'review-0', 'review-34', 'review-2', 'review-9', 'review-56', 'review-1'];
+const canvas = createCanvas(1368, 1680);
 const ctx = canvas.getContext('2d');
 
 // Headless installations may have no system fonts. A tiny bitmap fallback keeps
@@ -59,15 +59,15 @@ function label(text, x, y, size, bold = false) {
 ctx.fillStyle = '#e7e4df';
 ctx.fillRect(0, 0, canvas.width, canvas.height);
 for (let i = 0; i < seeds.length; i++) {
-  const art = createArtwork(seeds[i]);
-  const x = i % 3 * 320 + 20, y = Math.floor(i / 3) * 440;
+  const art = createArtwork(seeds[i], 16, 9);
+  const x = i % 3 * 456 + 20, y = Math.floor(i / 3) * 420;
   ctx.fillStyle = '#242428';
   label(`${art.family} / ${art.variant}`, x, y + 24, 15, true);
   label(`${art.seed} · ${RENDER_VERSION} · ${art.palette.theme}/${art.effects.material}`, x, y + 44, 12);
-  ctx.drawImage(rasterizeArtwork(art, 280, 280), x, y + 56);
-  ctx.drawImage(rasterizeArtwork(art, 64, 64), x, y + 350);
-  ctx.drawImage(rasterizeArtwork(art, 128, 64), x + 76, y + 350);
-  ctx.drawImage(rasterizeArtwork(art, 64, 80), x + 216, y + 350);
+  ctx.drawImage(rasterizeArtwork(art, 416, 234), x, y + 52);
+  for (const [dx, width, height] of [[0, 112, 112], [124, 196, 84], [332, 63, 112]]) {
+    ctx.drawImage(rasterizeArtwork(createArtwork(seeds[i], width, height), width, height), x + dx, y + 298);
+  }
 }
 await writeFile(output, await canvas.encode('png'));
 console.log(`Wrote ${RENDER_VERSION} contact sheet to ${output}`);

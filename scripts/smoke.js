@@ -92,8 +92,8 @@ async function main() {
     ctx.clearRect(0, 0, 128, 64);
     ctx.drawImage(squareImage, 0, 0);
     const square = ctx.getImageData(0, 0, 64, 64).data;
-    check('HTTP exports fit the same composition at different aspect ratios',
-      wide.status === 200 && wideImage.width === 128 && wideImage.height === 64 && Buffer.from(fitted).equals(Buffer.from(square)));
+    check('HTTP exports adapt the composition instead of inserting a square',
+      wide.status === 200 && wideImage.width === 128 && wideImage.height === 64 && !Buffer.from(fitted).equals(Buffer.from(square)));
 
     const bad = await post(base, JSON.stringify({ seed: 'smoke', width: 'abc', height: 64 }));
     const badJson = await bad.json();

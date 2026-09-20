@@ -193,7 +193,7 @@
   <div class="wrap">
     <header>
       <h1>Random Art</h1>
-      <p class="subtitle">Same seed, same composition at every size. Square artwork is fitted with background-colored margins.</p>
+      <p class="subtitle">Full-frame art, from composed to chaotic. Same seed + aspect ratio = same composition at every resolution.</p>
     </header>
 
     <section class="panel">
@@ -202,10 +202,10 @@
           <input id="seed" type="text" value="hello" />
         </label>
         <label>Width (X, px)
-          <input id="width" type="number" value="800" min="1" max="4096" />
+          <input id="width" type="number" value="1280" min="1" max="4096" />
         </label>
         <label>Height (Y, px)
-          <input id="height" type="number" value="600" min="1" max="4096" />
+          <input id="height" type="number" value="720" min="1" max="4096" />
         </label>
       </div>
       <div class="actions">
@@ -240,8 +240,8 @@
 
   async function paint() {
     const seed = $('seed').value;
-    const width = clampDim($('width').value, 800);
-    const height = clampDim($('height').value, 600);
+    const width = clampDim($('width').value, 1280);
+    const height = clampDim($('height').value, 720);
     $('width').value = width;
     $('height').value = height;
 

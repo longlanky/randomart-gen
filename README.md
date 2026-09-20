@@ -1,7 +1,7 @@
 # seeded-art
 
-A Node.js generative-art server and browser UI. A text seed selects an artwork;
-export dimensions select its resolution and framing.
+A Node.js generative-art server and browser UI. A text seed selects an artwork's
+visual identity; the aspect ratio shapes its layout and resolution controls detail.
 
 ```sh
 npm install
@@ -12,9 +12,10 @@ Open <http://localhost:3040>. `POST /render` accepts `{seed, width, height}` and
 returns a PNG. Dimensions must be integers from 1 to 4096, subject to the server's
 pixel budget (12 million by default). See [AGENTS.md](AGENTS.md) for server configuration.
 
-## Artwork and fitted exports
+## Full-frame artwork: composed and chaotic
 
-The **v4** generator has three composition families, each with three variants:
+The **v5** generator deterministically selects **chaotic artwork for about 30% of
+seeds**. The remaining seeds are split evenly between three structured families:
 
 - **Minimal:** layered cutouts, spaced triangular facets, and concentric arcs.
 - **Organic:** domain-warped currents, eddies, and ribbons sharing a directional field.
@@ -24,26 +25,37 @@ Seeds also select paper, dark, or muted palettes, with perceptual OKLCH colors
 assigned to dominant, supporting, accent, and ink roles. Finishes can be clean,
 paper-like, or stippled; selected dark organic artwork gets highlight-only glow.
 
-Every artwork is planned on a **1000 × 1000 logical artboard** before any export
-dimensions are considered. The full square is fitted into the requested image:
+**Chaotic artwork** brings back the older layered aesthetic: 5–12 independently
+chosen layers mixing shapes, curves, gradients, noise, flow fields, attractors,
+contours, triangulation, tiles, and spirographs. Stronger blending and saturated
+colors produce loose, layered, or turbulent compositions. Optional finishes
+include mirror/kaleidoscope/tiling, vignette, scanlines, duotone, posterization,
+pixel sorting, chromatic offsets, and glow. Mode and effects come from the seed,
+so resizing never randomly switches styles.
 
-- `512 × 512`: square artwork fills the image.
-- `1024 × 512`: the same 512-pixel artwork, with 256-pixel background margins left and right.
-- `512 × 1024`: the same artwork, with margins above and below.
-- `1024 × 1024`: the same geometry rasterized at twice the resolution.
+Every artwork uses a **rectangular logical artboard matching its aspect ratio**,
+with its shorter side set to 1000 logical units. There is no fitted square and no
+inserted blank margin. Shapes, flows, tiles, and materials extend throughout the
+rectangle. Minimal styles still include intentional negative space.
 
-Margins use the artwork's background color. An odd remaining pixel goes on the
-right or bottom, avoiding half-pixel resampling. Geometry, paths, tile counts,
-line widths, colors, and effect choices stay fixed in logical coordinates.
-Texture and glow are sampled from fixed 512 × 512 buffers, so increasing the
-export size cannot change their patterns or random choices. Geometric edges
-remain native-resolution rather than upscaled from a fixed master image.
+- `1920 × 1080` and `3840 × 2160`: identical plans, different rendering resolutions.
+- `1080 × 1920`: an adapted portrait layout with the same seed's family, palette,
+  variant, and effect choices.
+- `2100 × 900`: an ultrawide arrangement using the entire frame.
+
+Geometry is rendered at native resolution, with bounded supersampling for small
+previews to stabilize fine-line antialiasing. Textures and pixel effects use
+aspect-ratio-matched buffers with a longest side of 512 pixels, independent of
+export resolution. Destructive chaotic color/chromatic finishes intentionally
+use that canonical raster; pixel sorting overlays only affected runs. Increasing
+resolution cannot change effect selection, grain patterns, or sorting decisions.
 
 ## Reproducibility and versions
 
 For the same seed, generator version, dimensions, and rendering environment,
-fresh renders are byte-identical. Across dimensions the composition is stable;
-antialiasing and texture sampling naturally differ. Cross-platform or dependency
+fresh renders are byte-identical. Across resolutions with the **same aspect
+ratio**, the composition is stable; antialiasing and texture sampling naturally
+differ. Changing aspect ratio adapts the layout. Cross-platform or dependency
 upgrades are not a promise of identical PNG bytes; use the lockfile (`npm ci`)
 and the same Node/native rendering environment for archival reproduction.
 
@@ -52,35 +64,42 @@ The HTTP response includes `X-Render-Version`; the UI includes it and dimensions
 in downloaded filenames. Keep the original seed too: filenames sanitize and
 shorten seed text. HTTP seeds are limited to `MAX_SEED_LEN` (500 by default).
 
-V4 intentionally produces new images for existing seeds. V3's pipeline is retained
-for programmatic reproduction at its original dimensions:
+V5 intentionally produces new images for existing seeds. Both earlier pipelines
+are retained for programmatic reproduction at their original dimensions:
 
 ```js
 import { renderV3 } from './lib/render-v3.js';
-const png = await renderV3('hello', 512, 512);
+import { renderV4 } from './lib/render-v4.js';
+const oldLayered = await renderV3('hello', 512, 512);
+const oldFitted = await renderV4('hello', 800, 600);
 ```
 
 The HTTP endpoint serves the current version. Old cache files are left on disk
-but are not reused for v4.
+but are not reused for v5. V4's planner, compositions, and rasterizer are preserved
+in `*-v4.js` modules with their original versioned streams.
 
 ## Extending the renderer
 
 ```text
-createArtwork(seed)              lib/artwork.js
-  → named RNG streams           lib/rng.js
-  → palette + composition       lib/palette.js, lib/compositions.js
+createArtwork(seed, w, h)         lib/artwork.js
+  → reduced aspect ratio         lib/layout.js
+  → named RNG streams            lib/rng.js
+  → palette + composition        lib/palette.js, lib/compositions.js, lib/chaos.js
   → JSON-serializable plan
-rasterizeArtwork(plan, w, h)     lib/raster.js
-  → fitted vector geometry + fixed-resolution materials
-  → canvas.encode('png')        lib/render.js
+rasterizeArtwork(plan, w, h)      lib/raster.js
+  → full-frame geometry
+  → bounded canonical finishes   lib/finish.js
+  → canvas.encode('png')          lib/render.js
 ```
 
 `makeStream(seed, version, ...path)` derives independent RNG streams from stable
 names rather than consuming a shared parent RNG. Keep structure, color choices,
-noise fields, and textures separate. New motifs should use logical coordinates;
-never base geometry counts or random draws on export dimensions. Plans can be
-serialized and rasterized repeatedly without mutation. Bump the renderer version
-whenever a change intentionally alters output.
+noise fields, and textures separate. Layout can depend on the reduced aspect
+ratio, but geometry counts and random draws must not depend on output resolution.
+Bound counts and grids for extreme ratios as well. Plans can be serialized and
+rasterized repeatedly without mutation. A plan must be rendered at its own aspect
+ratio; create another plan from the same seed to change ratio. Bump the renderer
+version whenever a change intentionally alters output, including mode weights.
 
 ## Checks and visual review
 
@@ -90,11 +109,14 @@ npm run smoke
 npm run gallery -- /tmp/seeded-art-gallery.png
 ```
 
-The tests cover byte determinism, stream isolation, plan serialization, fitted
-pixel identity, odd and extreme sizes, and tolerant downsample comparisons across
-all nine variants. The smoke test uses temporary cache/log directories and checks
-HTTP rendering, version reporting, fitted framing, caching, and request guards.
+The tests cover byte determinism, stream isolation, plan serialization, mode
+distribution, full-frame coverage, undistorted geometry, all chaotic layer kinds,
+optional finishes, odd/extreme sizes, and tolerant downsample comparisons. The
+original v4 invariance tests are retained. The smoke test uses temporary cache/log
+directories and checks HTTP rendering, version reporting, adaptive layouts,
+caching, and request guards.
 
-The contact sheet uses fixed seeds to show all nine variants, each with a larger
-square and small square, landscape, and portrait exports. Its output directory
-must already exist. Inspect it when adjusting visual composition or materials.
+The contact sheet uses fixed seeds to show nine structured variants and three
+chaotic intensities, each with a large 16:9 export and smaller square, 21:9, and
+9:16 exports. Its output directory must already exist. Inspect it when adjusting
+visual composition or materials.
