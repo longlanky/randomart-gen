@@ -4,10 +4,10 @@ Guidance for AI coding agents working in this repository. Assumes no prior knowl
 
 ## Project overview
 
-**seeded-art** is a seeded generative-art server: given a text `seed` plus a `width`/`height`, it renders a deterministic abstract PNG. The same seed and dimensions always produce the same composition (see the determinism caveat below). It consists of:
+**seeded-art** is a seeded generative-art server: given a text `seed` plus a `width`/`height`, it renders a deterministic abstract PNG. Within a generator version, the same seed produces the same square composition at every resolution, fitted into the export with background-colored margins. It consists of:
 
 - An **Express HTTP server** (`server.js`) exposing a single `POST /render` endpoint with a two-tier PNG cache (in-memory LRU + on-disk files) and an append-only JSONL request log (`logs/requests.jsonl`).
-- A **rendering pipeline** (`lib/`) that turns a seed into an image using a seeded PRNG, a procedural color palette, layered canvas drawing primitives, symmetry transforms, and pixel-level post-processing.
+- A **rendering pipeline** (`lib/`) that builds a resolution-independent artwork plan using named RNG streams, perceptual palettes, and minimal/organic/ornamental composition families, then rasterizes fitted geometry and fixed-resolution materials.
 - A **self-contained web UI** (`public/index.html`, inline CSS/JS, no build step) with seed/size inputs, Paint / Random seed / Save / Stop buttons, and cache-status display.
 
 There is no framework, bundler, transpiler, or frontend toolchain — plain ES modules and a static HTML file.
@@ -28,6 +28,7 @@ Install with `npm install` (lockfile present: `package-lock.json`).
 - **Run:** `npm start` (alias for `node server.js`). No build step exists.
 - **Port:** `3040` by default; override with the `PORT` environment variable (`PORT=0` picks a free port).
 - **Tests:** `npm test` runs `node --test test/` (rng, dimension parsing, render determinism). `npm run smoke` boots the server in a temp sandbox and checks the whole request path.
+- **Visual review:** `npm run gallery -- /tmp/seeded-art-gallery.png` generates a fixed-seed contact sheet with all nine variants and square/landscape/portrait exports.
 - **Lint/format/CI:** none configured. The project is a git repository (no `.github`/CI setup); `.gitignore` excludes `node_modules/`, `cache/`, and `logs/`.
 
 ### Configuration (environment variables)
@@ -53,7 +54,7 @@ curl -X POST http://localhost:3040/render \
   -d '{"seed":"hello","width":256,"height":256}' -o out.png -D -
 ```
 
-Expect HTTP 200, `Content-Type: image/png`, and an `X-Cache` header of `fresh` on first request, then `memory` or `disk` on repeats. The UI is at `http://localhost:3040/`, and `GET /health` returns `{"ok":true,"version":"<RENDER_VERSION>"}`.
+Expect HTTP 200, `Content-Type: image/png`, `X-Render-Version: v4`, and an `X-Cache` header of `fresh` on first request, then `memory` or `disk` on repeats. The UI is at `http://localhost:3040/`, and `GET /health` returns `{"ok":true,"version":"<RENDER_VERSION>"}`.
 
 ## Code layout and request flow
 
@@ -61,29 +62,35 @@ Expect HTTP 200, `Content-Type: image/png`, and an `X-Cache` header of `fresh` o
 server.js            Express app: POST /render, caching, request logging, static hosting
 lib/
   render.js          render(seed, w, h) -> PNG Buffer; orchestrates the pipeline
-  rng.js             xmur3 hash -> mulberry32 PRNG; makeRng(seed) with helpers
-  palette.js         makePalette(rng): HSL harmony schemes -> RGB colors + background
-  primitives.js      drawLayers() + KINDS map of layer kinds; rgbaStr(), BLEND_MODES
-  shapes.js          Complex layer kinds: attractor, truchet, ribbons, contours, delaunay, spirograph
-  filters.js         Post filters: scanlines, duotone, bloom, pixelSort (all rng-seeded)
-  post.js            applySymmetry() (mirror/quad/kaleido/tile/pinwheel), postProcess() (vignette, grain, filters, chromatic aberration)
+  artwork.js         createArtwork(seed) -> serializable 1000x1000 logical artwork plan
+  compositions.js    Minimal, organic, ornamental families, each with three variants
+  raster.js          Fitted native-resolution geometry; fixed 512x512 texture/glow buffers
+  version.js         RENDER_VERSION, shared by generation and HTTP cache
+  rng.js             xmur3 -> mulberry32; makeRng(seed) and named makeStream() helpers
+  palette.js         OKLCH role-based palettes; original HSL makePalette retained for v3
+  render-v3.js       Original renderer for programmatic reproduction of v3 images
+  primitives.js      V3 drawLayers() + KINDS map; rgbaStr(), BLEND_MODES
+  shapes.js          V3 complex layer kinds
+  filters.js         V3 post filters: scanlines, duotone, bloom, pixelSort
+  post.js            V3 symmetry and post-processing
   request-log.js     logRequest(): appends one JSON line per request to logs/requests.jsonl
   dims.js            parseDim(): strict integer dimension parsing (shared by server + tests)
 public/
   index.html         Single-page UI (inline CSS/JS), calls POST /render via fetch
 scripts/
   smoke.js           End-to-end smoke test (boots the server in a temp sandbox)
-test/                node --test unit tests (rng, dims, render determinism)
+  gallery.js         Fixed-seed visual review contact sheet
+test/                node --test (rng, dims, determinism, artwork plans, fitted exports)
 index.html.bak_original_simple   Old backup of the UI; kept at the repo root so it is not served
 cache/               Generated PNG cache files (sha256-named); runtime data, safe to delete
 logs/                requests.jsonl request log; runtime data, safe to delete
 ```
 
-Pipeline order in `lib/render.js`: `makeRng(seed)` → `makePalette(rng)` → fill background → `drawLayers()` (each layer picks a blend mode from `BLEND_MODES`, an alpha, and one of 13 kinds from the `KINDS` map in `lib/primitives.js`: `blobs`, `polygons`, `bezier`, `gradientField`, `voronoi`, `flowField`, `noiseField`, `attractor`, `truchet`, `ribbons`, `contours`, `delaunay`, `spirograph`) → `applySymmetry()` → `postProcess()` (vignette + seeded grain, then chance-gated `scanlines`/`duotone`/`bloom`/`pixelSort`, then chromatic aberration) → `await canvas.encode('png')`.
+Pipeline order in `lib/render.js`: `createArtwork(seed)` → `rasterizeArtwork(plan, width, height)` → `await canvas.encode('png')`. The plan contains version, seed, family, variant, palette roles, logical paths/groups, and finish parameters. Export dimensions never enter planning. Geometry rasterizes at the smaller export dimension, then is centered on a background-colored canvas. Odd margins put the extra pixel on the right/bottom to avoid resampling. Paper/stipple textures and highlight-only glow use fixed 512x512 buffers; no mandatory vignette or whole-image symmetry. The original pipeline remains accessible through `renderV3()` in `lib/render-v3.js`.
 
-`render()` is **async**: PNG encoding is the single largest slice of a render (≈60 % at 2048²) and `canvas.encode()` runs it on the libuv thread pool, so the event loop stays responsive. The bytes are identical to the old `canvas.toBuffer('image/png')`. Everything else in the pipeline is still synchronous.
+`render()` is **async**: `canvas.encode()` runs PNG encoding on the libuv thread pool. Planning, drawing, and effects remain synchronous.
 
-Server caching in `server.js`: cache key is `sha256("<version>::<seed>::<w>x<h>")` where `<version>` is the `RENDER_VERSION` constant (currently `v3`) — bump it whenever the render pipeline changes so stale cached PNGs stop being served (old files are left on disk, not deleted). Lookup order: (1) in-memory LRU (max 200 entries / 256 MB), (2) disk file `cache/<key>.png`, (3) fresh render. Fresh renders populate both; disk writes are fire-and-forget and **atomic** (write to `<key>.png.<pid>.tmp`, then `rename`) so a crash can never leave a truncated PNG behind. A cache file whose first 8 bytes are not the PNG signature is treated as a miss and re-rendered. The `X-Cache` response header reports `memory` | `disk` | `fresh`.
+Server caching in `server.js`: cache key is `sha256("<version>::<seed>::<w>x<h>")` where `<version>` is the `RENDER_VERSION` constant in `lib/version.js` (currently `v4`) — bump it whenever the render pipeline changes so stale cached PNGs stop being served (old files are left on disk, not deleted). Lookup order: (1) in-memory LRU (max 200 entries / 256 MB), (2) disk file `cache/<key>.png`, (3) fresh render. Fresh renders populate both; disk writes are fire-and-forget and **atomic** (write to `<key>.png.<pid>.tmp`, then `rename`) so a crash can never leave a truncated PNG behind. A cache file whose first 8 bytes are not the PNG signature is treated as a miss and re-rendered. The `X-Cache` response header reports `memory` | `disk` | `fresh`; `X-Render-Version` records the generator version.
 
 Requests are guarded before rendering: `width`/`height` must be integers in 1–4096 (`parseDim()` in `lib/dims.js`, strict — non-integers get `400`, they are never silently clamped), `w*h` must not exceed `MAX_PIXELS`, and at most `MAX_CONCURRENT_RENDERS` fresh renders run at once (`429`). Concurrent requests for the same key share one render via an in-flight map.
 
@@ -91,19 +98,19 @@ Request logging: every `POST /render` appends one JSON line to `logs/requests.js
 
 ## Project-specific conventions and gotchas
 
-- **Determinism is the core feature** — the UI promises "Same seed = same image." All randomness must come from the seeded `rng` object (helpers: `rng()`, `rng.range(min,max)`, `rng.int(min,max)`, `rng.pick(arr)`, `rng.chance(p)`). Never call `Math.random()` in the render path. Film grain in `lib/post.js` used to be the one `Math.random()` exception; it is now seeded, so fresh renders of the same seed/size are byte-for-byte identical.
-- **RNG consumption order matters.** Any change that adds/removes/reorders `rng` calls changes the output for every existing seed. Treat rendered-output changes as breaking changes: when you intentionally change output, bump `RENDER_VERSION` in `server.js` so the cache key changes with it.
+- **Determinism is the core feature** — same seed and version means the same composition across dimensions. Same dimensions and rendering environment means identical PNG bytes; dependency/platform changes may affect rasterization. Never call `Math.random()` in the render path. Use `makeStream(seed, version, ...path)` for independent structure, color, field, and texture RNGs; helpers are `rng()`, `range`, `int`, `pick`, `chance`.
+- **RNG consumption order matters within each stream.** Do not derive named streams by drawing from a shared parent. Do not base geometry counts, paths, strokes, or random choices on export dimensions. Intentional output changes require bumping `RENDER_VERSION` in `lib/version.js`. Preserve the v3 helpers if changing shared modules.
 - `makeRng` combines two `xmur3` hash outputs and discards the first 15 PRNG values as warm-up — keep this when touching `lib/rng.js`.
-- **Drawing is synchronous and CPU-bound.** The per-pixel loops in `lib/post.js` are O(w·h) in plain JS, so large canvases take noticeable time. PNG encoding (≈60 % of a 2048² render) is the one part that runs off-thread via `canvas.encode()`; there is no worker-thread offload for the rest.
-- Colors are plain `[r, g, b]` arrays (0–255 floats); convert with `rgbaStr([r,g,b], alpha)` from `lib/primitives.js`.
+- **Drawing is synchronous and CPU-bound.** V4 JS pixel loops use fixed effect buffers, but native rasterization still grows with output resolution. PNG encoding runs off-thread via `canvas.encode()`; there is no worker-thread offload for planning/drawing.
+- Colors are plain `[r, g, b]` arrays (0–255 integers in v4; floats in v3). V4 palettes have background/dominant/support/accent/ink roles and no stateful `pick()` closure.
 - Code style: 2-space indent, semicolons, single quotes, sparse comments, small single-purpose functions per file. Match this when editing.
-- The frontend talks to the backend only via `POST /render` with JSON `{seed, width, height}` and reads the `X-Cache` header; keep that contract stable.
+- The frontend talks to the backend only via `POST /render` with JSON `{seed, width, height}` and reads `X-Cache` and `X-Render-Version`; keep that contract stable.
 
 ## Testing instructions
 
 There is no linter or CI, but there is a test suite and a smoke test:
 
-- `npm test` — `node --test test/` (rng behaviour, `parseDim()` strictness, render determinism).
+- `npm test` — `node --test test/` (rng isolation, `parseDim()` strictness, render determinism, serializable immutable plans, all nine variants, fitted pixel identity, odd/extreme dimensions, OKLCH, tolerant downsample comparisons).
 - `npm run smoke` — boots the server in a temp sandbox (`PORT=0`, temp `CACHE_DIR`/`LOG_DIR`) and asserts the whole path: `fresh` → `memory`, `disk` after restart, byte-identical bytes, 400 on bad dimensions / oversized / malformed JSON, 429 under the concurrency cap, and re-render of a corrupt cache entry. It cleans up after itself and never touches the real `cache/` or `logs/`.
 
 Manual checks still worth doing after visual changes:

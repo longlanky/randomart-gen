@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeRng, xmur3 } from '../lib/rng.js';
+import { makeRng, makeStream, xmur3 } from '../lib/rng.js';
 
 test('same seed yields the same sequence', () => {
   const a = makeRng('hello');
@@ -40,4 +40,23 @@ test('xmur3 hashes UTF-8 bytes, not JS characters', () => {
   const a = xmur3('é')();
   const b = xmur3(String.fromCharCode(0xc3, 0xa9))();
   assert.notEqual(a, b);
+});
+
+test('named streams isolate geometry from texture sampling and call order', () => {
+  const expected = makeStream('a seed 🌱', 'v4', 'geometry');
+  const geometry = makeStream('a seed 🌱', 'v4', 'geometry');
+  const texture = makeStream('a seed 🌱', 'v4', 'texture');
+  for (let i = 0; i < 40; i++) {
+    for (let j = 0; j < i * 100; j++) texture();
+    assert.equal(geometry(), expected());
+  }
+});
+
+test('stream names preserve tuple boundaries and generator versions', () => {
+  const sequence = (...args) => {
+    const rng = makeStream(...args);
+    return Array.from({ length: 8 }, () => rng());
+  };
+  assert.notDeepEqual(sequence('seed', 'v4', 'a', 'b'), sequence('seed', 'v4', 'a,b'));
+  assert.notDeepEqual(sequence('seed', 'v4', 'geometry'), sequence('seed', 'v5', 'geometry'));
 });

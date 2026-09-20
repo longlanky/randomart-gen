@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createCanvas, loadImage } from '@napi-rs/canvas';
+import { RENDER_VERSION } from '../lib/version.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -64,7 +66,7 @@ async function main() {
   try {
     const health = await fetch(`${base}/health`);
     const healthJson = await health.json();
-    check('GET /health', health.status === 200 && healthJson.ok === true, JSON.stringify(healthJson));
+    check('GET /health', health.status === 200 && healthJson.ok === true && healthJson.version === RENDER_VERSION, JSON.stringify(healthJson));
 
     const first = await post(base, JSON.stringify({ seed: 'smoke', width: 64, height: 64 }));
     const firstBuf = Buffer.from(await first.arrayBuffer());
@@ -72,12 +74,26 @@ async function main() {
       first.status === 200 && first.headers.get('x-cache') === 'fresh',
       `${first.status} x-cache=${first.headers.get('x-cache')}`);
     check('content-type is image/png', first.headers.get('content-type') === 'image/png');
+    check('renderer version is recorded', first.headers.get('x-render-version') === RENDER_VERSION);
     check('cache-control is set', (first.headers.get('cache-control') || '').includes('immutable'));
     check('response is a PNG', firstBuf.subarray(0, 8).toString('hex') === '89504e470d0a1a0a');
 
     const second = await post(base, JSON.stringify({ seed: 'smoke', width: 64, height: 64 }));
     check('second render is served from memory', second.headers.get('x-cache') === 'memory',
       `x-cache=${second.headers.get('x-cache')}`);
+
+    const wide = await post(base, JSON.stringify({ seed: 'smoke', width: 128, height: 64 }));
+    const wideImage = await loadImage(Buffer.from(await wide.arrayBuffer()));
+    const squareImage = await loadImage(firstBuf);
+    const canvas = createCanvas(128, 64);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(wideImage, 0, 0);
+    const fitted = ctx.getImageData(32, 0, 64, 64).data;
+    ctx.clearRect(0, 0, 128, 64);
+    ctx.drawImage(squareImage, 0, 0);
+    const square = ctx.getImageData(0, 0, 64, 64).data;
+    check('HTTP exports fit the same composition at different aspect ratios',
+      wide.status === 200 && wideImage.width === 128 && wideImage.height === 64 && Buffer.from(fitted).equals(Buffer.from(square)));
 
     const bad = await post(base, JSON.stringify({ seed: 'smoke', width: 'abc', height: 64 }));
     const badJson = await bad.json();

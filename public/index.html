@@ -193,7 +193,7 @@
   <div class="wrap">
     <header>
       <h1>Random Art</h1>
-      <p class="subtitle">Same seed + size = same image.</p>
+      <p class="subtitle">Same seed, same composition at every size. Square artwork is fitted with background-colored margins.</p>
     </header>
 
     <section class="panel">
@@ -276,13 +276,15 @@
       const objectUrl = URL.createObjectURL(blob);
       art.dataset.objectUrl = objectUrl;
       art.dataset.seed = seed;
+      art.dataset.version = res.headers.get('X-Render-Version') || '';
+      art.dataset.size = `${width}x${height}`;
       art.src = objectUrl;
 
       $('placeholder').style.display = 'none';
       art.style.display = 'block';
 
       const ms = (performance.now() - t0).toFixed(0);
-      setStatus(`Done in ${ms} ms (cache: ${cacheSrc}).`, 'done');
+      setStatus(`Done in ${ms} ms (cache: ${cacheSrc}, ${art.dataset.version}).`, 'done');
     } catch (err) {
       if (err.name === 'AbortError') setStatus('Stopped.', null);
       else setStatus('Error: ' + err.message, 'error');
@@ -302,7 +304,7 @@
     const safe = (art.dataset.seed || 'art').replace(/[^a-z0-9-_]+/gi, '_').slice(0, 50) || 'art';
     const a = document.createElement('a');
     a.href = art.dataset.objectUrl;
-    a.download = `art-${safe}.png`;
+    a.download = `art-${safe}-${art.dataset.version}-${art.dataset.size}.png`;
     document.body.appendChild(a);
     a.click();
     a.remove();

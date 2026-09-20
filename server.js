@@ -8,6 +8,7 @@ import { LRUCache } from 'lru-cache';
 import { render } from './lib/render.js';
 import { logRequest } from './lib/request-log.js';
 import { parseDim, MIN_DIM, MAX_DIM } from './lib/dims.js';
+import { RENDER_VERSION } from './lib/version.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -36,10 +37,6 @@ fs.mkdirSync(CACHE_DIR, { recursive: true });
 const memCache = new LRUCache({ max: 200, maxSize: 256 * 1024 * 1024,
   sizeCalculation: (buf) => buf.length });
 
-// Bump when the render pipeline changes so stale cached PNGs stop being served
-// v3: integer symmetry halves + tile rects, real kaleidoscope wedge, squared-distance vignette
-const RENDER_VERSION = 'v3';
-
 function cacheKey(seed, w, h) {
   return crypto.createHash('sha256')
     .update(`${RENDER_VERSION}::${seed}::${w}x${h}`).digest('hex');
@@ -59,6 +56,7 @@ function sendPng(res, buf, source) {
   res.locals.cacheSource = source;
   res.set('Content-Type', 'image/png');
   res.set('X-Cache', source);
+  res.set('X-Render-Version', RENDER_VERSION);
   res.set('Cache-Control', 'public, max-age=31536000, immutable');
   // Express adds Content-Length and a weak ETag, and answers 304 on If-None-Match.
   res.send(buf);

@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node server.js",
     "smoke": "node scripts/smoke.js",
+    "gallery": "node scripts/gallery.js",
     "test": "node --test test/"
   },
   "dependencies": {
