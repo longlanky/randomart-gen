@@ -193,7 +193,7 @@
   <div class="wrap">
     <header>
       <h1>Random Art</h1>
-      <p class="subtitle">Same seed = same image, even with different resolutions.</p>
+      <p class="subtitle">Same seed + size = same image.</p>
     </header>
 
     <section class="panel">
@@ -233,10 +233,17 @@
     $('status').className = 'status' + (state ? ' ' + state : '');
   }
 
+  function clampDim(v, fallback) {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 1 && n <= 4096 ? n : fallback;
+  }
+
   async function paint() {
     const seed = $('seed').value;
-    const width = parseInt($('width').value);
-    const height = parseInt($('height').value);
+    const width = clampDim($('width').value, 800);
+    const height = clampDim($('height').value, 600);
+    $('width').value = width;
+    $('height').value = height;
 
     if (controller) controller.abort();
     controller = new AbortController();
@@ -252,13 +259,27 @@
         body: JSON.stringify({ seed, width, height }),
         signal: controller.signal,
       });
-      if (!res.ok) throw new Error('Render failed');
+      if (!res.ok) {
+        // N11: surface the server's JSON reason instead of a generic string
+        let msg = `Render failed (HTTP ${res.status})`;
+        try {
+          const body = await res.json();
+          if (body && body.error) msg = body.error;
+        } catch { /* non-JSON error body: keep the status-only message */ }
+        throw new Error(msg);
+      }
       const cacheSrc = res.headers.get('X-Cache');
       const blob = await res.blob();
 
+      const art = $('art');
+      if (art.dataset.objectUrl) URL.revokeObjectURL(art.dataset.objectUrl);
+      const objectUrl = URL.createObjectURL(blob);
+      art.dataset.objectUrl = objectUrl;
+      art.dataset.seed = seed;
+      art.src = objectUrl;
+
       $('placeholder').style.display = 'none';
-      $('art').style.display = 'block';
-      $('art').src = URL.createObjectURL(blob);
+      art.style.display = 'block';
 
       const ms = (performance.now() - t0).toFixed(0);
       setStatus(`Done in ${ms} ms (cache: ${cacheSrc}).`, 'done');
@@ -276,11 +297,15 @@
     paint();
   };
   $('save').onclick = () => {
-    if (!$('art').src) return;
+    const art = $('art');
+    if (!art.dataset.objectUrl) return;
+    const safe = (art.dataset.seed || 'art').replace(/[^a-z0-9-_]+/gi, '_').slice(0, 50) || 'art';
     const a = document.createElement('a');
-    a.href = $('art').src;
-    a.download = `art-${$('seed').value}.png`;
+    a.href = art.dataset.objectUrl;
+    a.download = `art-${safe}.png`;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
   };
   $('stop').onclick = () => { if (controller) controller.abort(); };
 </script>
